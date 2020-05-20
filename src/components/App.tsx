@@ -486,7 +486,7 @@ class App extends React.Component<any, AppState> {
 
     if (
       this.state.editingLinearElement &&
-      !this.state.selectedElementIds[this.state.editingLinearElement.element.id]
+      !this.state.selectedElementIds[this.state.editingLinearElement.elementId]
     ) {
       this.actionManager.executeAction(actionFinalize);
     }
@@ -1171,7 +1171,7 @@ class App extends React.Component<any, AppState> {
         isLinearElement(selectedElements[0])
       ) {
         this.setState({
-          editingLinearElement: new LinearElementEditor(selectedElements[0]),
+          editingLinearElement: new LinearElementEditor(selectedElements[0].id),
         });
       } else if (
         selectedElements.length === 1 &&
@@ -1466,7 +1466,7 @@ class App extends React.Component<any, AppState> {
 
     if (selectedElements.length === 1 && isLinearElement(selectedElements[0])) {
       this.setState({
-        editingLinearElement: new LinearElementEditor(selectedElements[0]),
+        editingLinearElement: new LinearElementEditor(selectedElements[0].id),
       });
       return;
     }
@@ -1546,7 +1546,14 @@ class App extends React.Component<any, AppState> {
     );
 
     if (this.state.editingLinearElement && draggingElementPointIndex === null) {
-      const { element, lastUncommittedPoint } = this.state.editingLinearElement;
+      const {
+        elementId,
+        lastUncommittedPoint,
+      } = this.state.editingLinearElement;
+      const element = LinearElementEditor.getElement(elementId);
+      if (!element) {
+        return;
+      }
       const { x: rx, y: ry, points } = element;
       const lastPoint = points[points.length - 1];
 
@@ -1976,8 +1983,9 @@ class App extends React.Component<any, AppState> {
       }
       if (!isResizingElements) {
         if (this.state.editingLinearElement) {
-          if (event[KEYS.CTRL_OR_CMD]) {
-            const { element } = this.state.editingLinearElement;
+          const { elementId } = this.state.editingLinearElement;
+          const element = LinearElementEditor.getElement(elementId);
+          if (element && event[KEYS.CTRL_OR_CMD]) {
             if (!this.state.editingLinearElement.lastUncommittedPoint) {
               const { x, y } = viewportCoordsToSceneCoords(
                 event,
@@ -1989,6 +1997,9 @@ class App extends React.Component<any, AppState> {
                 points: [...element.points, [x - element.x, y - element.y]],
               });
             }
+            if (this.state.editingLinearElement.lastUncommittedPoint !== null) {
+              history.resumeRecording();
+            }
             this.setState({
               editingLinearElement: {
                 ...this.state.editingLinearElement,
@@ -1997,21 +2008,21 @@ class App extends React.Component<any, AppState> {
               },
             });
             return;
+          } else if (element) {
+            const clickedPointIndex = LinearElementEditor.getPointIndexUnderCursor(
+              element,
+              x,
+              y,
+            );
+
+            this.setState({
+              editingLinearElement: {
+                ...this.state.editingLinearElement,
+                activePointIndex:
+                  clickedPointIndex > -1 ? clickedPointIndex : null,
+              },
+            });
           }
-
-          const clickedPointIndex = LinearElementEditor.getPointIndexUnderCursor(
-            this.state.editingLinearElement.element,
-            x,
-            y,
-          );
-
-          this.setState({
-            editingLinearElement: {
-              ...this.state.editingLinearElement,
-              activePointIndex:
-                clickedPointIndex > -1 ? clickedPointIndex : null,
-            },
-          });
         }
 
         hitElement = getElementAtPosition(
@@ -2269,51 +2280,51 @@ class App extends React.Component<any, AppState> {
       }
 
       if (this.state.editingLinearElement) {
-        const clickedPointIndex =
-          draggingElementPointIndex ??
-          LinearElementEditor.getPointIndexUnderCursor(
-            this.state.editingLinearElement.element,
-            x,
-            y,
-          );
+        const { elementId } = this.state.editingLinearElement;
+        const element = LinearElementEditor.getElement(elementId);
+        if (element) {
+          const clickedPointIndex =
+            draggingElementPointIndex ??
+            LinearElementEditor.getPointIndexUnderCursor(element, x, y);
 
-        if (clickedPointIndex > -1) {
-          draggingElementPointIndex =
-            draggingElementPointIndex ?? clickedPointIndex;
-          const { x, y } = viewportCoordsToSceneCoords(
-            event,
-            this.state,
-            this.canvas,
-            window.devicePixelRatio,
-          );
+          if (clickedPointIndex > -1) {
+            draggingElementPointIndex =
+              draggingElementPointIndex ?? clickedPointIndex;
+            const { x, y } = viewportCoordsToSceneCoords(
+              event,
+              this.state,
+              this.canvas,
+              window.devicePixelRatio,
+            );
 
-          const { element, activePointIndex } = this.state.editingLinearElement;
+            const { activePointIndex } = this.state.editingLinearElement;
 
-          if (activePointIndex === null) {
-            this.setState({
-              editingLinearElement: {
-                ...this.state.editingLinearElement,
-                activePointIndex: clickedPointIndex,
-              },
-            });
+            if (activePointIndex === null) {
+              this.setState({
+                editingLinearElement: {
+                  ...this.state.editingLinearElement,
+                  activePointIndex: clickedPointIndex,
+                },
+              });
+            }
+
+            const [deltaX, deltaY] = rotate(
+              x - lastX,
+              y - lastY,
+              0,
+              0,
+              -element.angle,
+            );
+            const targetPoint = element.points[clickedPointIndex];
+            LinearElementEditor.movePoint(element, clickedPointIndex, [
+              targetPoint[0] + deltaX,
+              targetPoint[1] + deltaY,
+            ]);
+
+            lastX = x;
+            lastY = y;
+            return;
           }
-
-          const [deltaX, deltaY] = rotate(
-            x - lastX,
-            y - lastY,
-            0,
-            0,
-            -element.angle,
-          );
-          const targetPoint = element.points[clickedPointIndex];
-          LinearElementEditor.movePoint(element, clickedPointIndex, [
-            targetPoint[0] + deltaX,
-            targetPoint[1] + deltaY,
-          ]);
-
-          lastX = x;
-          lastY = y;
-          return;
         }
       }
 
@@ -2491,8 +2502,10 @@ class App extends React.Component<any, AppState> {
       // if moving start/end point towards start/end point within threshold,
       //  close the loop
       if (this.state.editingLinearElement) {
-        const { element } = this.state.editingLinearElement;
+        const { elementId } = this.state.editingLinearElement;
+        const element = LinearElementEditor.getElement(elementId);
         if (
+          element &&
           draggingElementPointIndex !== null &&
           (draggingElementPointIndex === 0 ||
             draggingElementPointIndex === element.points.length - 1) &&

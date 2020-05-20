@@ -1,19 +1,27 @@
-import { NonDeleted, ExcalidrawLinearElement } from "./types";
+import {
+  NonDeleted,
+  ExcalidrawLinearElement,
+  ExcalidrawElement,
+} from "./types";
 import { distance2d, rotate, adjustXYWithRotation } from "../math";
 import { getElementAbsoluteCoords } from ".";
 import { getElementPointsCoords } from "./bounds";
 import { Point } from "../types";
 import { mutateElement } from "./mutateElement";
+import { globalSceneState } from "../scene";
+import { isLinearElement } from "./typeChecks";
 
 export class LinearElementEditor {
-  public element: NonDeleted<ExcalidrawLinearElement>;
+  public elementId: ExcalidrawElement["id"];
   public activePointIndex: number | null;
   public lastUncommittedPoint: Point | null;
 
-  constructor(element: LinearElementEditor["element"]) {
-    LinearElementEditor.normalizePoints(element);
+  constructor(elementId: LinearElementEditor["elementId"]) {
+    LinearElementEditor.normalizePoints(
+      LinearElementEditor.getElement(elementId)!,
+    );
 
-    this.element = element;
+    this.elementId = elementId;
     this.activePointIndex = null;
     this.lastUncommittedPoint = null;
   }
@@ -23,6 +31,16 @@ export class LinearElementEditor {
   // ---------------------------------------------------------------------------
 
   static POINT_HANDLE_SIZE = 20;
+
+  static getElement(
+    elementId: LinearElementEditor["elementId"],
+  ): NonDeleted<ExcalidrawLinearElement> | null {
+    const element = globalSceneState.getElement(elementId);
+    if (!element || !isLinearElement(element)) {
+      return null;
+    }
+    return element;
+  }
 
   static getPointsGlobalCoordinates(
     element: NonDeleted<ExcalidrawLinearElement>,

@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { register } from "./register";
 import { getNonDeletedElements } from "../element";
 import { mutateElement } from "../element/mutateElement";
+import { LinearElementEditor } from "../element/linearElementEditor";
 
 export const actionDeleteSelected = register({
   name: "deleteSelectedElements",
@@ -15,56 +16,59 @@ export const actionDeleteSelected = register({
       appState.editingLinearElement?.activePointIndex != null &&
       appState.editingLinearElement?.activePointIndex > -1
     ) {
-      const { element } = appState.editingLinearElement;
+      const { elementId } = appState.editingLinearElement;
+      const element = LinearElementEditor.getElement(elementId);
 
-      // case: deleting last element
-      if (element.points.length < 2) {
+      if (element) {
+        // case: deleting last element
+        if (element.points.length < 2) {
+          return {
+            elements: elements.filter((el) => el.id !== element.id),
+            appState: {
+              ...appState,
+              editingLinearElement: null,
+            },
+            commitToHistory: false,
+          };
+        }
+
+        let points = element.points.slice();
+        points.splice(appState.editingLinearElement.activePointIndex, 1);
+        let offsetX = 0;
+        let offsetY = 0;
+        // if deleting first element, make the next to be [0,0] and recalculate
+        //  positions of the rest with respect to it
+        if (appState.editingLinearElement.activePointIndex === 0) {
+          offsetX = points[0][0];
+          offsetY = points[0][1];
+          points = points.map((point, idx) => {
+            if (idx === 0) {
+              return [0, 0];
+            }
+            return [point[0] - offsetX, point[1] - offsetY];
+          });
+        }
+        mutateElement(element, {
+          points,
+          x: element.x + offsetX,
+          y: element.y + offsetY,
+        });
+
         return {
-          elements: elements.filter((el) => el.id !== element.id),
+          elements: elements,
           appState: {
             ...appState,
-            editingLinearElement: null,
+            editingLinearElement: {
+              ...appState.editingLinearElement,
+              activePointIndex:
+                appState.editingLinearElement.activePointIndex > 0
+                  ? appState.editingLinearElement.activePointIndex - 1
+                  : 0,
+            },
           },
-          commitToHistory: false,
+          commitToHistory: true,
         };
       }
-
-      let points = element.points.slice();
-      points.splice(appState.editingLinearElement.activePointIndex, 1);
-      let offsetX = 0;
-      let offsetY = 0;
-      // if deleting first element, make the next to be [0,0] and recalculate
-      //  positions of the rest with respect to it
-      if (appState.editingLinearElement.activePointIndex === 0) {
-        offsetX = points[0][0];
-        offsetY = points[0][1];
-        points = points.map((point, idx) => {
-          if (idx === 0) {
-            return [0, 0];
-          }
-          return [point[0] - offsetX, point[1] - offsetY];
-        });
-      }
-      mutateElement(element, {
-        points,
-        x: element.x + offsetX,
-        y: element.y + offsetY,
-      });
-
-      return {
-        elements: elements,
-        appState: {
-          ...appState,
-          editingLinearElement: {
-            ...appState.editingLinearElement,
-            activePointIndex:
-              appState.editingLinearElement.activePointIndex > 0
-                ? appState.editingLinearElement.activePointIndex - 1
-                : 0,
-          },
-        },
-        commitToHistory: true,
-      };
     }
 
     const {

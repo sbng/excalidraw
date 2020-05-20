@@ -1,6 +1,7 @@
 import {
   ExcalidrawElement,
   NonDeletedExcalidrawElement,
+  NonDeleted,
 } from "../element/types";
 import { getNonDeletedElements } from "../element";
 
@@ -16,6 +17,18 @@ class GlobalScene {
   private callbacks: Set<SceneStateCallback> = new Set();
 
   constructor(private _elements: readonly ExcalidrawElement[] = []) {}
+
+  getElement(
+    id: ExcalidrawElement["id"],
+  ): NonDeleted<ExcalidrawElement> | null {
+    const element = this._elements.find(
+      (element) => !element.isDeleted && element.id === id,
+    );
+    if (element) {
+      return element as NonDeleted<ExcalidrawElement>;
+    }
+    return null;
+  }
 
   getElementsIncludingDeleted() {
     return this._elements;
